@@ -23,14 +23,14 @@ If anything fails (CORS issues, network errors, unsupported browser), the audio 
 
 ## Settings
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| Target loudness | −18 dBFS | The RMS level all audio is normalized to. Presets: −14 (streaming), −16, −18, −20, −23 (broadcast). |
-| Max boost | 12 dB | Maximum gain applied to quiet tracks. Higher values risk amplifying noise. |
-| Max cut | 12 dB | Maximum reduction applied to loud tracks. |
-| Analysis duration | 10 sec | How many seconds from the start of each file to measure. |
-| One player at a time | On | Pauses other players when one starts. |
-| Enabled | On | Master switch. When off, audio plays at original levels. |
+| Option               | Default  | Description                                                                                         |
+| -------------------- | -------- | --------------------------------------------------------------------------------------------------- |
+| Target loudness      | −18 dBFS | The RMS level all audio is normalized to. Presets: −14 (streaming), −16, −18, −20, −23 (broadcast). |
+| Max boost            | 12 dB    | Maximum gain applied to quiet tracks. Higher values risk amplifying noise.                          |
+| Max cut              | 12 dB    | Maximum reduction applied to loud tracks.                                                           |
+| Analysis duration    | 10 sec   | How many seconds from the start of each file to measure.                                            |
+| One player at a time | On       | Pauses other players when one starts.                                                               |
+| Enabled              | On       | Master switch. When off, audio plays at original levels.                                            |
 
 ## Requirements
 
@@ -84,10 +84,12 @@ git archive --format=zip --output=audio-level-matcher.zip HEAD
 ```
 
 This creates a clean zip containing **only** the essential plugin files:
+
 - `audio-level-matcher.php`
 - `js/audio-level-matcher.js`
 
 Files automatically excluded from the production build:
+
 - `.git/` directory
 - `.gitignore`
 - `.gitattributes`
