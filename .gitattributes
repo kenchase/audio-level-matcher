@@ -1,0 +1,4 @@
+# Exclude these files from production zip archives
+.gitignore export-ignore
+.gitattributes export-ignore
+README.md export-ignore
