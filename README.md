@@ -69,6 +69,33 @@ audio-level-matcher/
 └── README.md
 ```
 
+## Development
+
+### Repository
+
+This plugin is version-controlled with Git. The repository includes development files like `.gitignore` and `.gitattributes` that are automatically excluded from production builds.
+
+### Creating a Production Build
+
+To create a production-ready zip file (without development files, git metadata, or system files):
+
+```bash
+git archive --format=zip --output=audio-level-matcher.zip HEAD
+```
+
+This creates a clean zip containing **only** the essential plugin files:
+- `audio-level-matcher.php`
+- `js/audio-level-matcher.js`
+
+Files automatically excluded from the production build:
+- `.git/` directory
+- `.gitignore`
+- `.gitattributes`
+- `README.md`
+- Any untracked or system files
+
+The resulting zip can be uploaded directly to WordPress via **Plugins → Add New → Upload Plugin**.
+
 ## License
 
 GPL-2.0-or-later
