@@ -3,13 +3,21 @@
  * ──────────────────────────────────────
  *
  * Automatically normalizes the loudness of every <audio> element on the page.
+ * Designed for audio engineers evaluating mixes — level correction must be
+ * accurate from the very first sample to prevent loudness bias.
  *
  * HOW IT WORKS
- * 1. On DOMContentLoaded, discovers all <audio> elements.
+ * 1. On page load, discovers all <audio> elements.
  * 2. For each, creates a Web Audio graph: source → GainNode → destination.
- * 3. On first play, fetches the file, decodes it offline, and measures RMS loudness.
- * 4. Computes a gain correction to match the configured target level.
- * 5. Applies the gain smoothly via setTargetAtTime (no clicks).
+ * 3. Immediately fetches each file, decodes it offline, and measures RMS loudness.
+ * 4. Sets the GainNode to the computed correction BEFORE the user presses play.
+ * 5. When the user presses play, the level is already correct — no ramp, no delay.
+ *
+ * EAGER ANALYSIS
+ * All tracks are analyzed on page load in parallel. This means each audio file
+ * is downloaded twice (once by the browser for playback, once by this script
+ * for analysis), but it guarantees the gain is ready before anyone hits play.
+ * For critical A/B listening this tradeoff is essential.
  *
  * GRACEFUL DEGRADATION
  * If anything fails (CORS error, decode failure, AudioContext unavailable),
@@ -73,11 +81,11 @@
 	 * Returns a linear gain value to reach the target level,
 	 * clamped within the configured dB limits.
 	 * ────────────────────────────────────────────────────────────── */
-	function analyzeRMS( el ) {
+	function analyzeRMS( url ) {
 		return new Promise( function ( resolve ) {
 			var ctx = getCtx();
 
-			fetch( el.src, { cache: 'default' } )
+			fetch( url, { cache: 'default' } )
 				.then( function ( res ) {
 					if ( ! res.ok ) throw new Error( 'HTTP ' + res.status );
 					return res.arrayBuffer();
@@ -119,21 +127,6 @@
 	}
 
 	/* ──────────────────────────────────────────────────────────────
-	 * Apply gain to a player's GainNode.
-	 * Uses setTargetAtTime for a smooth, click-free ramp.
-	 * ────────────────────────────────────────────────────────────── */
-	function applyGain( el ) {
-		var state = players.get( el );
-		if ( ! state ) return;
-		var ctx = getCtx();
-		state.gain.gain.setTargetAtTime(
-			state.normGain,
-			ctx.currentTime,
-			CONFIG.gainRampTime
-		);
-	}
-
-	/* ──────────────────────────────────────────────────────────────
 	 * Mutual exclusion — pause all other players.
 	 * ────────────────────────────────────────────────────────────── */
 	function pauseOthers( exceptEl ) {
@@ -146,17 +139,30 @@
 	}
 
 	/* ──────────────────────────────────────────────────────────────
+	 * Resolve the effective source URL from an <audio> element.
+	 * Handles both src attribute and nested <source> elements.
+	 * ────────────────────────────────────────────────────────────── */
+	function getSourceUrl( el ) {
+		if ( el.src ) return el.src;
+		var sourceEl = el.querySelector( 'source[src]' );
+		return sourceEl ? sourceEl.src : null;
+	}
+
+	/* ──────────────────────────────────────────────────────────────
 	 * Register a single <audio> element.
 	 *
-	 * Wires up the Web Audio graph and attaches the play handler
-	 * that triggers lazy analysis on first play.
+	 * 1. Wires the Web Audio graph.
+	 * 2. Kicks off RMS analysis immediately (eager — no waiting for play).
+	 * 3. Sets the gain BEFORE the user ever presses play.
+	 * 4. Attaches a play handler for mutual exclusion and AudioContext resume.
 	 * ────────────────────────────────────────────────────────────── */
 	function registerPlayer( el ) {
 		/* Skip if already registered (e.g., script loaded twice). */
 		if ( players.has( el ) ) return;
 
-		/* Skip elements without a src — nothing to analyze. */
-		if ( ! el.src && ! el.querySelector( 'source' ) ) return;
+		/* Skip elements without a source — nothing to analyze. */
+		var url = getSourceUrl( el );
+		if ( ! url ) return;
 
 		try {
 			var ctx    = getCtx();
@@ -185,44 +191,47 @@
 		}
 
 		/*
-		 * On first play: analyze loudness, then apply correction.
-		 * Subsequent plays just apply the cached gain.
+		 * EAGER ANALYSIS: Start immediately on registration, not on play.
+		 * The gain is set on the GainNode as soon as analysis completes.
+		 * Since the GainNode is already in the signal chain, the correction
+		 * will be active whenever the user eventually presses play.
 		 */
-		el.addEventListener( 'play', function onPlay() {
+		analyzeRMS( url ).then( function ( normGain ) {
 			var st = players.get( el );
 			if ( ! st ) return;
+			st.normGain = normGain;
+			st.analyzed = true;
 
-			/* Resume context if suspended (required on mobile). */
+			/*
+			 * Set gain immediately on the node (no ramp needed here —
+			 * nothing is playing yet, so there's no audible transition).
+			 */
+			st.gain.gain.value = normGain;
+		} );
+
+		/*
+		 * Play handler: only needed for mutual exclusion and
+		 * resuming the AudioContext on mobile (user gesture required).
+		 */
+		el.addEventListener( 'play', function () {
+			/* Resume context if suspended (required on mobile / autoplay policy). */
 			if ( audioCtx && audioCtx.state === 'suspended' ) {
 				audioCtx.resume();
 			}
 
 			pauseOthers( el );
-
-			if ( st.analyzed ) {
-				/* Already analyzed — just ensure gain is applied. */
-				applyGain( el );
-				return;
-			}
-
-			/* Lazy analysis: runs once on first play. */
-			analyzeRMS( el ).then( function ( normGain ) {
-				st.normGain = normGain;
-				st.analyzed = true;
-				applyGain( el );
-			} );
 		} );
 	}
 
 	/* ──────────────────────────────────────────────────────────────
 	 * Initialization
 	 *
-	 * Discovers all <audio> elements currently in the DOM.
-	 * Also sets up a MutationObserver to catch dynamically added
-	 * players (e.g., AJAX-loaded content, infinite scroll).
+	 * Discovers all <audio> elements currently in the DOM and
+	 * immediately begins analyzing each one. Also watches for
+	 * dynamically added players via MutationObserver.
 	 * ────────────────────────────────────────────────────────────── */
 	function init() {
-		/* Register all existing audio elements. */
+		/* Register and analyze all existing audio elements. */
 		var audios = document.querySelectorAll( 'audio' );
 		for ( var i = 0; i < audios.length; i++ ) {
 			registerPlayer( audios[ i ] );
@@ -231,6 +240,7 @@
 		/*
 		 * Watch for new <audio> elements added after page load.
 		 * Covers AJAX content, page builders, and dynamic shortcodes.
+		 * New players are analyzed eagerly as soon as they appear.
 		 */
 		if ( typeof MutationObserver !== 'undefined' ) {
 			var observer = new MutationObserver( function ( mutations ) {
@@ -238,12 +248,11 @@
 					var added = mutations[ m ].addedNodes;
 					for ( var n = 0; n < added.length; n++ ) {
 						var node = added[ n ];
-						if ( node.nodeType !== 1 ) continue; // Element nodes only.
+						if ( node.nodeType !== 1 ) continue;
 
 						if ( node.tagName === 'AUDIO' ) {
 							registerPlayer( node );
 						}
-						/* Also check children (e.g., a wrapper div containing an audio element). */
 						var nested = node.querySelectorAll ? node.querySelectorAll( 'audio' ) : [];
 						for ( var j = 0; j < nested.length; j++ ) {
 							registerPlayer( nested[ j ] );

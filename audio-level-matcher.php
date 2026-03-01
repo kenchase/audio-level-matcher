@@ -1,11 +1,9 @@
 <?php
-
 /**
  * Plugin Name: Audio Level Matcher
  * Description: Automatically normalizes loudness across all audio players on a page using Web Audio API. Works with WordPress [audio] shortcodes and any <audio> element.
  * Version:     1.0.0
- * Author:      Ken Chase
- * Author URI:  https://kenchase.com
+ * Author:      Your Name
  * License:     GPL-2.0-or-later
  * Requires PHP: 7.4
  * Requires at least: 5.8
@@ -22,15 +20,15 @@
  *    - Degrades gracefully: if anything fails, the audio plays at its original level.
  */
 
-defined('ABSPATH') || exit;
+defined( 'ABSPATH' ) || exit;
 
 /* ──────────────────────────────────────────────────────────────────
  * Constants
  * ────────────────────────────────────────────────────────────────── */
 
-define('ALM_VERSION', '1.0.0');
-define('ALM_PLUGIN_DIR', plugin_dir_path(__FILE__));
-define('ALM_PLUGIN_URL', plugin_dir_url(__FILE__));
+define( 'ALM_VERSION', '1.0.0' );
+define( 'ALM_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
+define( 'ALM_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 
 /* ──────────────────────────────────────────────────────────────────
  * 1. SETTINGS — Register options + admin page
@@ -40,8 +38,7 @@ define('ALM_PLUGIN_URL', plugin_dir_url(__FILE__));
  * Return plugin defaults in one place.
  * Every option lives in a single DB row: 'alm_options'.
  */
-function alm_defaults(): array
-{
+function alm_defaults(): array {
 	return [
 		'target_loudness'    => -18,   // dBFS RMS target. Common values: -14 (streaming), -18 (web), -23 (broadcast).
 		'max_gain'           => 12,    // Maximum boost in dB.
@@ -57,22 +54,21 @@ function alm_defaults(): array
  * Get current options, merged with defaults so new options
  * added in future versions always have a value.
  */
-function alm_get_options(): array
-{
-	return wp_parse_args(get_option('alm_options', []), alm_defaults());
+function alm_get_options(): array {
+	return wp_parse_args( get_option( 'alm_options', [] ), alm_defaults() );
 }
 
 /**
  * Register settings, sections, and fields.
  * Uses the WordPress Settings API — no custom form handling needed.
  */
-add_action('admin_init', function () {
+add_action( 'admin_init', function () {
 
-	register_setting('alm_settings_group', 'alm_options', [
+	register_setting( 'alm_settings_group', 'alm_options', [
 		'type'              => 'array',
 		'sanitize_callback' => 'alm_sanitize_options',
 		'default'           => alm_defaults(),
-	]);
+	] );
 
 	/* ── Section: Loudness ── */
 	add_settings_section(
@@ -80,15 +76,15 @@ add_action('admin_init', function () {
 		'Loudness',
 		function () {
 			echo '<p>Controls how audio levels are matched. The target loudness is the level all audio will be normalized to. '
-				. 'Gain limits prevent extreme corrections on very quiet or very loud files.</p>';
+			   . 'Gain limits prevent extreme corrections on very quiet or very loud files.</p>';
 		},
 		'alm-settings'
 	);
 
-	add_settings_field('target_loudness', 'Target loudness (dBFS RMS)', 'alm_field_target_loudness', 'alm-settings', 'alm_section_loudness');
-	add_settings_field('max_gain',        'Max boost (dB)',             'alm_field_max_gain',        'alm-settings', 'alm_section_loudness');
-	add_settings_field('min_gain',        'Max cut (dB)',               'alm_field_min_gain',        'alm-settings', 'alm_section_loudness');
-	add_settings_field('analysis_duration', 'Analysis duration (seconds)', 'alm_field_analysis_duration', 'alm-settings', 'alm_section_loudness');
+	add_settings_field( 'target_loudness', 'Target loudness (dBFS RMS)', 'alm_field_target_loudness', 'alm-settings', 'alm_section_loudness' );
+	add_settings_field( 'max_gain',        'Max boost (dB)',             'alm_field_max_gain',        'alm-settings', 'alm_section_loudness' );
+	add_settings_field( 'min_gain',        'Max cut (dB)',               'alm_field_min_gain',        'alm-settings', 'alm_section_loudness' );
+	add_settings_field( 'analysis_duration', 'Analysis duration (seconds)', 'alm_field_analysis_duration', 'alm-settings', 'alm_section_loudness' );
 
 	/* ── Section: Behavior ── */
 	add_settings_section(
@@ -100,14 +96,13 @@ add_action('admin_init', function () {
 		'alm-settings'
 	);
 
-	add_settings_field('mutual_exclusion', 'One player at a time', 'alm_field_mutual_exclusion', 'alm-settings', 'alm_section_behavior');
-	add_settings_field('enabled',          'Enable level matching', 'alm_field_enabled',          'alm-settings', 'alm_section_behavior');
-});
+	add_settings_field( 'mutual_exclusion', 'One player at a time', 'alm_field_mutual_exclusion', 'alm-settings', 'alm_section_behavior' );
+	add_settings_field( 'enabled',          'Enable level matching', 'alm_field_enabled',          'alm-settings', 'alm_section_behavior' );
+} );
 
 /* ── Field renderers ── */
 
-function alm_field_target_loudness()
-{
+function alm_field_target_loudness() {
 	$opts = alm_get_options();
 	$val  = (float) $opts['target_loudness'];
 
@@ -120,69 +115,64 @@ function alm_field_target_loudness()
 		-23 => '-23 dBFS (quiet — EBU broadcast standard)',
 	];
 	echo '<select name="alm_options[target_loudness]" id="alm_target_loudness">';
-	foreach ($presets as $db => $label) {
+	foreach ( $presets as $db => $label ) {
 		printf(
 			'<option value="%s" %s>%s</option>',
-			esc_attr($db),
-			selected($val, $db, false),
-			esc_html($label)
+			esc_attr( $db ),
+			selected( $val, $db, false ),
+			esc_html( $label )
 		);
 	}
 	echo '</select>';
 	echo '<p class="description">The RMS level all audio will be normalized to. '
-		. 'Lower values = quieter. -18 dBFS is a safe default for most web use.</p>';
+	   . 'Lower values = quieter. -18 dBFS is a safe default for most web use.</p>';
 }
 
-function alm_field_max_gain()
-{
+function alm_field_max_gain() {
 	$opts = alm_get_options();
 	printf(
 		'<input type="number" name="alm_options[max_gain]" value="%s" min="0" max="24" step="1" class="small-text" /> dB',
-		esc_attr($opts['max_gain'])
+		esc_attr( $opts['max_gain'] )
 	);
 	echo '<p class="description">Maximum boost applied to quiet tracks. 12 dB is safe; higher risks amplifying noise.</p>';
 }
 
-function alm_field_min_gain()
-{
+function alm_field_min_gain() {
 	$opts = alm_get_options();
 	// Stored as negative (e.g., -12), but display the absolute value for clarity.
-	$abs = abs((float) $opts['min_gain']);
+	$abs = abs( (float) $opts['min_gain'] );
 	printf(
 		'<input type="number" name="alm_options[min_gain]" value="%s" min="0" max="24" step="1" class="small-text" /> dB',
-		esc_attr($abs)
+		esc_attr( $abs )
 	);
 	echo '<p class="description">Maximum cut applied to loud tracks (entered as a positive number, applied as negative).</p>';
 }
 
-function alm_field_analysis_duration()
-{
+function alm_field_analysis_duration() {
 	$opts = alm_get_options();
 	printf(
 		'<input type="number" name="alm_options[analysis_duration]" value="%s" min="1" max="60" step="1" class="small-text" /> seconds',
-		esc_attr($opts['analysis_duration'])
+		esc_attr( $opts['analysis_duration'] )
 	);
 	echo '<p class="description">How many seconds from the start of each file to analyze. '
-		. 'Longer = more accurate but slower on first play. 10 seconds works well for most content.</p>';
+	   . 'Longer = more accurate but slower on first play. 10 seconds works well for most content.</p>';
 }
 
-function alm_field_mutual_exclusion()
-{
+function alm_field_mutual_exclusion() {
 	$opts = alm_get_options();
 	printf(
 		'<label><input type="checkbox" name="alm_options[mutual_exclusion]" value="1" %s /> '
-			. 'Pause other audio players when one starts playing</label>',
-		checked($opts['mutual_exclusion'], true, false)
+		. 'Pause other audio players when one starts playing</label>',
+		checked( $opts['mutual_exclusion'], true, false )
 	);
 }
 
-function alm_field_enabled()
-{
+function alm_field_enabled() {
 	$opts = alm_get_options();
 	printf(
 		'<label><input type="checkbox" name="alm_options[enabled]" value="1" %s /> '
-			. 'Enable audio level matching on the front end</label>',
-		checked($opts['enabled'], true, false)
+		. 'Enable audio level matching on the front end</label>',
+		checked( $opts['enabled'], true, false )
 	);
 	echo '<p class="description">Uncheck to disable the plugin without deactivating it. Audio will play at its original level.</p>';
 }
@@ -191,37 +181,36 @@ function alm_field_enabled()
  * Sanitize and validate all options before saving.
  * Returns a clean array safe to store in the database.
  */
-function alm_sanitize_options($input): array
-{
+function alm_sanitize_options( $input ): array {
 	$defaults  = alm_defaults();
 	$sanitized = [];
 
 	// Target loudness: must be one of the preset values.
-	$allowed_targets = [-14, -16, -18, -20, -23];
-	$target = isset($input['target_loudness']) ? (int) $input['target_loudness'] : $defaults['target_loudness'];
-	$sanitized['target_loudness'] = in_array($target, $allowed_targets, true) ? $target : $defaults['target_loudness'];
+	$allowed_targets = [ -14, -16, -18, -20, -23 ];
+	$target = isset( $input['target_loudness'] ) ? (int) $input['target_loudness'] : $defaults['target_loudness'];
+	$sanitized['target_loudness'] = in_array( $target, $allowed_targets, true ) ? $target : $defaults['target_loudness'];
 
 	// Gain limits: integers within reasonable bounds.
-	$sanitized['max_gain'] = isset($input['max_gain'])
-		? clamp_int((int) $input['max_gain'], 0, 24)
+	$sanitized['max_gain'] = isset( $input['max_gain'] )
+		? clamp_int( (int) $input['max_gain'], 0, 24 )
 		: $defaults['max_gain'];
 
 	// min_gain is entered as positive, stored as negative.
-	$sanitized['min_gain'] = isset($input['min_gain'])
-		? -1 * abs(clamp_int((int) $input['min_gain'], 0, 24))
+	$sanitized['min_gain'] = isset( $input['min_gain'] )
+		? -1 * abs( clamp_int( (int) $input['min_gain'], 0, 24 ) )
 		: $defaults['min_gain'];
 
 	// Analysis duration: 1–60 seconds.
-	$sanitized['analysis_duration'] = isset($input['analysis_duration'])
-		? clamp_int((int) $input['analysis_duration'], 1, 60)
+	$sanitized['analysis_duration'] = isset( $input['analysis_duration'] )
+		? clamp_int( (int) $input['analysis_duration'], 1, 60 )
 		: $defaults['analysis_duration'];
 
 	// Gain ramp time: not exposed in UI, keep default.
 	$sanitized['gain_ramp_time'] = $defaults['gain_ramp_time'];
 
 	// Checkboxes: absent = unchecked = false.
-	$sanitized['mutual_exclusion'] = ! empty($input['mutual_exclusion']);
-	$sanitized['enabled']          = ! empty($input['enabled']);
+	$sanitized['mutual_exclusion'] = ! empty( $input['mutual_exclusion'] );
+	$sanitized['enabled']          = ! empty( $input['enabled'] );
 
 	return $sanitized;
 }
@@ -229,16 +218,15 @@ function alm_sanitize_options($input): array
 /**
  * Tiny helper — PHP doesn't have a built-in integer clamp until 8.x.
  */
-function clamp_int(int $val, int $min, int $max): int
-{
-	return max($min, min($max, $val));
+function clamp_int( int $val, int $min, int $max ): int {
+	return max( $min, min( $max, $val ) );
 }
 
 /* ──────────────────────────────────────────────────────────────────
  * 2. ADMIN PAGE — Simple, single-page settings screen
  * ────────────────────────────────────────────────────────────────── */
 
-add_action('admin_menu', function () {
+add_action( 'admin_menu', function () {
 	add_options_page(
 		'Audio Level Matcher',       // Page title.
 		'Audio Level Matcher',       // Menu title.
@@ -246,19 +234,18 @@ add_action('admin_menu', function () {
 		'alm-settings',              // Menu slug.
 		'alm_render_settings_page'   // Callback.
 	);
-});
+} );
 
 /**
  * Render the settings page using the Settings API.
  */
-function alm_render_settings_page()
-{
-	if (! current_user_can('manage_options')) {
+function alm_render_settings_page() {
+	if ( ! current_user_can( 'manage_options' ) ) {
 		return;
 	}
-?>
+	?>
 	<div class="wrap">
-		<h1><?php echo esc_html(get_admin_page_title()); ?></h1>
+		<h1><?php echo esc_html( get_admin_page_title() ); ?></h1>
 
 		<p>
 			Audio Level Matcher automatically normalizes the loudness of all
@@ -268,13 +255,13 @@ function alm_render_settings_page()
 
 		<form action="options.php" method="post">
 			<?php
-			settings_fields('alm_settings_group');
-			do_settings_sections('alm-settings');
+			settings_fields( 'alm_settings_group' );
+			do_settings_sections( 'alm-settings' );
 			submit_button();
 			?>
 		</form>
 	</div>
-<?php
+	<?php
 }
 
 /* ──────────────────────────────────────────────────────────────────
@@ -288,13 +275,13 @@ function alm_render_settings_page()
  * <audio> elements (CORS security restriction). The audio must also
  * be served from the same origin or with appropriate CORS headers.
  */
-add_filter('wp_audio_shortcode', function (string $html): string {
+add_filter( 'wp_audio_shortcode', function ( string $html ): string {
 	// Only modify if not already present.
-	if (str_contains($html, 'crossorigin')) {
+	if ( str_contains( $html, 'crossorigin' ) ) {
 		return $html;
 	}
-	return str_replace('<audio', '<audio crossorigin="anonymous"', $html);
-}, 10, 1);
+	return str_replace( '<audio', '<audio crossorigin="anonymous"', $html );
+}, 10, 1 );
 
 /**
  * Enqueue the level-matching script on the front end.
@@ -303,11 +290,11 @@ add_filter('wp_audio_shortcode', function (string $html): string {
  * - Passes PHP-configured options to JS via wp_localize_script.
  * - Loaded in the footer so it runs after audio elements exist in the DOM.
  */
-add_action('wp_enqueue_scripts', function () {
+add_action( 'wp_enqueue_scripts', function () {
 	$opts = alm_get_options();
 
 	// Bail if disabled — audio plays normally without the script.
-	if (empty($opts['enabled'])) {
+	if ( empty( $opts['enabled'] ) ) {
 		return;
 	}
 
@@ -320,12 +307,12 @@ add_action('wp_enqueue_scripts', function () {
 	);
 
 	// Pass config from PHP → JS as a global object.
-	wp_localize_script('audio-level-matcher', 'almConfig', [
+	wp_localize_script( 'audio-level-matcher', 'almConfig', [
 		'targetRmsDbfs'    => (float) $opts['target_loudness'],
 		'maxGainDb'        => (float) $opts['max_gain'],
 		'minGainDb'        => (float) $opts['min_gain'],
 		'analysisDuration' => (int)   $opts['analysis_duration'],
 		'gainRampTime'     => (float) $opts['gain_ramp_time'],
 		'mutualExclusion'  => (bool)  $opts['mutual_exclusion'],
-	]);
-});
+	] );
+} );
